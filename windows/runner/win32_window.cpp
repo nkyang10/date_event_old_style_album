@@ -134,8 +134,9 @@ bool Win32Window::Create(const std::wstring& title,
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
 
-  HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+  HWND window = CreateWindowEx(
+      WS_EX_APPWINDOW | WS_EX_ACCEPTFILES,
+      window_class, title.c_str(), WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -213,6 +214,22 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       return 0;
 
+    case WM_SETFOCUS:
+      // Forward focus to the Flutter child window so it can receive input.
+      if (child_content_ != nullptr) {
+        SetFocus(child_content_);
+        return 0;
+      }
+      break;
+
+    case WM_MOUSEACTIVATE:
+      // Ensure clicks activate the window and are forwarded to the child.
+      if (child_content_ != nullptr) {
+        SetFocus(child_content_);
+        return MA_ACTIVATE;
+      }
+      break;
+
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
       return 0;
@@ -220,7 +237,7 @@ Win32Window::MessageHandler(HWND hwnd,
     // Forward mouse events to the Flutter child window for remote desktop
     // compatibility (AnyDesk, RDP, etc.). Remote desktop tools often send
     // traditional mouse messages that Flutter's child window may not receive
-    // directly.
+    // directly via pointer messages.
     case WM_MOUSEMOVE:
     case WM_LBUTTONDOWN:
     case WM_LBUTTONUP:
@@ -234,14 +251,23 @@ Win32Window::MessageHandler(HWND hwnd,
     case WM_MOUSEWHEEL:
     case WM_MOUSEHWHEEL:
       if (child_content_ != nullptr) {
-        // Forward mouse event directly to the Flutter child window so that it
-        // can process the input even during remote desktop sessions.
-        LRESULT result = SendMessage(child_content_, message, wparam, lparam);
-        // Some events (like WM_MOUSEMOVE) should still let DefWindowProc
-        // process them to avoid breaking window behavior.
-        if (message != WM_MOUSEMOVE) {
-          return result;
-        }
+        // Forward mouse event to the Flutter child window.
+        // Flutter may handle these directly in its window proc, or they
+        // may be converted to pointer events by the engine.
+        SendMessage(child_content_, message, wparam, lparam);
+        return 0;
+      }
+      break;
+
+    // Also forward pointer messages to the child, in case the parent receives
+    // them before the child.
+    case WM_POINTERDOWN:
+    case WM_POINTERUP:
+    case WM_POINTERUPDATE:
+    case WM_POINTERENTER:
+    case WM_POINTERLEAVE:
+      if (child_content_ != nullptr) {
+        return SendMessage(child_content_, message, wparam, lparam);
       }
       break;
   }
@@ -269,6 +295,14 @@ Win32Window* Win32Window::GetThisFromHandle(HWND const window) noexcept {
 void Win32Window::SetChildContent(HWND content) {
   child_content_ = content;
   SetParent(content, window_handle_);
+
+  // Remove WS_EX_TRANSPARENT from the child window if present, as it can
+  // cause click-through issues on remote desktop (AnyDesk, RDP, etc.).
+  LONG_PTR ex_style = GetWindowLongPtr(content, GWL_EXSTYLE);
+  if (ex_style & WS_EX_TRANSPARENT) {
+    SetWindowLongPtr(content, GWL_EXSTYLE, ex_style & ~WS_EX_TRANSPARENT);
+  }
+
   RECT frame = GetClientArea();
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
