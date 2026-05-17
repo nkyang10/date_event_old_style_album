@@ -8,7 +8,7 @@ class GeocodingService {
         Uri.parse(
             'https://nominatim.openstreetmap.org/reverse?lat=$latitude&lon=$longitude&format=json&zoom=10'),
         headers: {
-          'User-Agent': 'PhotoOrganizerApp/1.0',
+          'User-Agent': 'DateEventStyleAlbum/1.0',
           'Accept-Language': 'en',
         },
       );
