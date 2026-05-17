@@ -5,18 +5,18 @@ import 'screens/home_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const PhotoOrganizerApp());
+  runApp(const DateEventStyleAlbumApp());
 }
 
-class PhotoOrganizerApp extends StatelessWidget {
-  const PhotoOrganizerApp({super.key});
+class DateEventStyleAlbumApp extends StatelessWidget {
+  const DateEventStyleAlbumApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => AppProvider(),
       child: MaterialApp(
-        title: 'Photo Organizer',
+        title: 'DateEvent Style Album',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
