@@ -91,7 +91,7 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
     WNDCLASS window_class{};
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
     window_class.lpszClassName = kWindowClassName;
-    window_class.style = CS_HREDRAW | CS_VREDRAW;
+    window_class.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
     window_class.hInstance = GetModuleHandle(nullptr);
@@ -216,6 +216,34 @@ Win32Window::MessageHandler(HWND hwnd,
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
       return 0;
+
+    // Forward mouse events to the Flutter child window for remote desktop
+    // compatibility (AnyDesk, RDP, etc.). Remote desktop tools often send
+    // traditional mouse messages that Flutter's child window may not receive
+    // directly.
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_LBUTTONDBLCLK:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+    case WM_RBUTTONDBLCLK:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+    case WM_MBUTTONDBLCLK:
+    case WM_MOUSEWHEEL:
+    case WM_MOUSEHWHEEL:
+      if (child_content_ != nullptr) {
+        // Forward mouse event directly to the Flutter child window so that it
+        // can process the input even during remote desktop sessions.
+        LRESULT result = SendMessage(child_content_, message, wparam, lparam);
+        // Some events (like WM_MOUSEMOVE) should still let DefWindowProc
+        // process them to avoid breaking window behavior.
+        if (message != WM_MOUSEMOVE) {
+          return result;
+        }
+      }
+      break;
   }
 
   return DefWindowProc(window_handle_, message, wparam, lparam);
